@@ -1,6 +1,6 @@
 # Agent Construct on Buzz: Foundation Handoff
 
-Status: lifecycle foundation verified; Golden Path not yet implemented
+Status: lifecycle foundation verified; user-visible writing-bot vertical slice lives on a follow-up branch
 
 Date: 2026-08-19
 
@@ -76,7 +76,9 @@ The repository-wide `just ci` gate was not run for this focused foundation spike
 
 ## Next product gate
 
-Build one isolated, polished vertical slice:
+The isolated vertical slice is implemented on a branch based on this one. See [agent-construct-vertical-slice.md](agent-construct-vertical-slice.md).
+
+The original gate remains:
 
 `Plus -> conversation -> OpenClaw writing bot -> message -> Stop/Resume -> restart/replay`
 

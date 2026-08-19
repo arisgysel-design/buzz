@@ -1,4 +1,4 @@
-import { Activity, Bot, FolderGit2, Inbox, Zap } from "lucide-react";
+import { Activity, Bot, FolderGit2, Inbox, Plus, Zap } from "lucide-react";
 
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
 import { FeatureGate } from "@/shared/features";
@@ -6,6 +6,7 @@ import type { Channel, SearchHit } from "@/shared/api/types";
 import {
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -39,6 +40,7 @@ type AppSidebarPinnedHeaderProps = {
 
 type AppSidebarPrimaryMenuProps = {
   homeBadgeCount: number;
+  onNewWritingBot: () => void;
   onSelectAgents: () => void;
   onSelectHome: () => void;
   onSelectProjects: () => void;
@@ -88,6 +90,7 @@ export function AppSidebarPinnedHeader({
 
 export function AppSidebarPrimaryMenu({
   homeBadgeCount,
+  onNewWritingBot,
   onSelectAgents,
   onSelectHome,
   onSelectProjects,
@@ -162,6 +165,18 @@ export function AppSidebarPrimaryMenu({
             <Bot className="h-4 w-4" />
             <SidebarMenuLabel>Agents</SidebarMenuLabel>
           </SidebarMenuButton>
+          <SidebarMenuAction
+            aria-label="New writing bot"
+            data-testid="agent-construct-plus"
+            onClick={(event) => {
+              event.stopPropagation();
+              onNewWritingBot();
+            }}
+            title="New writing bot"
+            type="button"
+          >
+            <Plus />
+          </SidebarMenuAction>
         </SidebarMenuItem>
         <FeatureGate feature="workflows">
           <SidebarMenuItem>
