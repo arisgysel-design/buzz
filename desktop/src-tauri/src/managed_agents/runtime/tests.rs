@@ -70,21 +70,6 @@ fn identifier_empty_returns_false() {
 // ── marker_entry tests ──────────────────────────────────────────────────
 
 #[test]
-fn marker_entry_is_namespaced_by_instance_id() {
-    // The spawn stamp and sweep matcher both go through buzz_marker_entry, pinning the on-the-wire
-    // format and guards against a dev build (`...app.dev`) matching a
-    // release build's (`...app`) agents.
-    assert_eq!(
-        super::buzz_marker_entry("xyz.block.buzz.app"),
-        b"BUZZ_MANAGED_AGENT=xyz.block.buzz.app".to_vec()
-    );
-    assert_ne!(
-        super::buzz_marker_entry("xyz.block.buzz.app"),
-        super::buzz_marker_entry("xyz.block.buzz.app.dev")
-    );
-}
-
-#[test]
 fn buzz_agent_has_mcp_hooks() {
     let p = known_acp_runtime("buzz-agent").expect("should resolve");
     assert!(p.mcp_hooks);
@@ -881,6 +866,9 @@ fn own_group_grandchild_detected_by_ancestor_walk() {
     unsafe { libc::kill(-(intermediate_pid as i32), libc::SIGKILL) };
     let _ = intermediate.wait();
 }
+
+#[cfg(target_os = "macos")]
+mod orphan_sweep;
 
 // ── pair receipt validation tests ───────────────────────────────────────
 

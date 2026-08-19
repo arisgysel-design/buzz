@@ -414,28 +414,36 @@ fn build_client_capabilities() -> serde_json::Value {
 }
 
 impl AcpClient {
-    /// Kill the agent subprocess and wait for it to exit (no zombies).
+    /// Stop the agent subprocess and wait for it to exit (no zombies).
     ///
-    /// `Drop` only calls `start_kill()` (sends SIGKILL but doesn't reap).
+    /// `Drop` only performs best-effort synchronous cleanup.
     /// Call this when you need guaranteed cleanup — e.g., in `run_models`
     /// before process exit.
     pub async fn shutdown(&mut self) {
-        // Kill the entire process group when possible. The child was spawned
-        // with process_group(0), so its PID == its PGID. Killing the group
-        // ensures subprocesses (MCP servers, tool processes) are cleaned up
-        // rather than orphaned to init.
-        //
-        // Falls back to start_kill() (direct child only) on non-Unix or if
-        // the child has been polled to completion (id() returns None).
+        // Give adapters a bounded graceful-stop window before SIGKILL. Some
+        // adapters (notably OpenClaw) launch their protocol bridge in a nested
+        // process group and reap it from a SIGTERM handler. Sending SIGKILL
+        // first bypasses that handler and leaves the nested bridge orphaned.
+        if self.child.id().is_some_and(terminate_process_group) {
+            match tokio::time::timeout(std::time::Duration::from_secs(2), self.child.wait()).await {
+                Ok(Ok(_)) => return,
+                Ok(Err(e)) => tracing::debug!("child wait error after SIGTERM: {e}"),
+                Err(_) => tracing::debug!("child did not exit within 2s after SIGTERM"),
+            }
+        }
+
+        // Graceful shutdown failed or is unavailable. Kill the entire process
+        // group when possible. The child was spawned with process_group(0),
+        // so its PID == its PGID.
         match self.child.id() {
             Some(pid) if kill_process_group(pid) => {}
             _ => {
                 let _ = self.child.start_kill();
             }
         }
-        // Bounded wait: if the child doesn't exit within 5s after SIGKILL,
-        // give up and let Drop/OS handle it. An unbounded wait here would
-        // wedge the harness during respawn or shutdown if a child is stuck.
+
+        // Keep the hard-stop wait bounded so a stuck child cannot wedge the
+        // harness during respawn or shutdown.
         match tokio::time::timeout(std::time::Duration::from_secs(5), self.child.wait()).await {
             Ok(Ok(_)) => {}
             Ok(Err(e)) => tracing::debug!("child wait error after kill: {e}"),
@@ -465,9 +473,11 @@ impl AcpClient {
             .stdout(Stdio::piped())
             // Inherit stderr so agent logs are visible in the harness terminal.
             .stderr(Stdio::inherit())
-            // Ensure the child is killed when the AcpClient is dropped (best-effort).
-            // Callers MUST still call shutdown().await for guaranteed cleanup.
-            .kill_on_drop(true);
+            // Drop sends SIGTERM to the adapter process group so cooperative
+            // adapters can reap nested process groups. An immediate tokio
+            // kill-on-drop SIGKILL would bypass that cleanup path.
+            // Callers MUST still call shutdown().await for bounded cleanup.
+            .kill_on_drop(false);
 
         // Per-persona env vars (e.g., GOOSE_PROVIDER, BUZZ_AGENT_PROVIDER).
         // For most keys, operator precedence wins: skip injection if already set
@@ -2296,19 +2306,35 @@ pub fn model_in_catalog(
 
 impl Drop for AcpClient {
     fn drop(&mut self) {
-        // Best-effort SIGKILL + reap. We cannot `await` in Drop (sync context).
-        // Kill the process group when possible so subprocesses don't leak.
-        // Callers SHOULD still call `shutdown().await` for guaranteed reaping.
+        // Best-effort graceful stop. We cannot await in Drop, and an immediate
+        // SIGKILL would prevent adapters such as OpenClaw from reaping nested
+        // process groups. Callers SHOULD still call `shutdown().await` for the
+        // bounded graceful-then-hard-stop sequence.
         match self.child.id() {
-            Some(pid) if kill_process_group(pid) => {}
+            Some(pid) if terminate_process_group(pid) => {}
             _ => {
                 let _ = self.child.start_kill();
             }
         }
-        // Non-blocking reap attempt — prevents zombie accumulation in the
-        // common case where SIGKILL takes effect before Drop returns.
+        // Reap immediately if the child already exited; otherwise tokio's
+        // process driver observes the later SIGCHLD.
         let _ = self.child.try_wait();
     }
+}
+
+/// Send SIGTERM to the agent process group so the adapter can reap any nested
+/// process groups it owns before the hard-stop fallback runs.
+#[cfg(unix)]
+fn terminate_process_group(pid: u32) -> bool {
+    use nix::sys::signal::{killpg, Signal};
+    use nix::unistd::Pid;
+
+    killpg(Pid::from_raw(pid as i32), Signal::SIGTERM).is_ok()
+}
+
+#[cfg(not(unix))]
+fn terminate_process_group(_pid: u32) -> bool {
+    false
 }
 
 /// Send SIGKILL to an entire process group. Returns `true` if the signal was sent.
@@ -3027,6 +3053,138 @@ mod tests {
         AcpClient::spawn("bash", &["-c".into(), script.into()], &[], false)
             .await
             .expect("failed to spawn test script")
+    }
+
+    #[cfg(unix)]
+    fn process_exists(pid: u32) -> bool {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+
+    #[cfg(unix)]
+    async fn spawn_nested_process_group_fixture() -> (AcpClient, u32) {
+        // Model OpenClaw's process shape: the adapter owns a nested bridge in
+        // a separate process group and cleans it up from its SIGTERM handler.
+        let mut client = spawn_script(
+            r#"
+set -m
+nested=""
+trap 'if [ -n "$nested" ]; then kill -TERM "$nested" 2>/dev/null || true; wait "$nested" 2>/dev/null || true; fi; exit 0' TERM
+bash -c 'trap "exit 0" TERM; printf "%s %s\n" "$$" "$(ps -o pgid= -p $$ | tr -d " ")"; while :; do sleep 1; done' &
+nested=$!
+wait "$nested"
+"#,
+        )
+        .await;
+
+        let parent_pid = client.child.id().expect("adapter child has no PID");
+        let nested_process =
+            tokio::time::timeout(std::time::Duration::from_secs(2), client.reader.next())
+                .await
+                .expect("nested bridge did not report its PID")
+                .expect("nested bridge closed stdout before reporting its PID")
+                .expect("nested bridge PID line was unreadable");
+        let mut process_fields = nested_process.split_whitespace();
+        let nested_pid = process_fields
+            .next()
+            .expect("nested bridge omitted its PID")
+            .parse::<u32>()
+            .expect("nested bridge PID was not numeric");
+        let nested_pgid = process_fields
+            .next()
+            .expect("nested bridge omitted its process-group ID")
+            .parse::<u32>()
+            .expect("nested bridge process-group ID was not numeric");
+        assert_ne!(
+            nested_pgid, parent_pid,
+            "regression fixture must put the nested bridge in a separate process group"
+        );
+
+        (client, nested_pid)
+    }
+
+    #[cfg(unix)]
+    async fn wait_for_process_exit(pid: u32) -> bool {
+        for _ in 0..50 {
+            if !process_exists(pid) {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        false
+    }
+
+    #[cfg(unix)]
+    fn kill_failed_probe(pid: u32) {
+        // Exact-PID test cleanup: never leave a failed regression probe behind.
+        let _ = std::process::Command::new("kill")
+            .args(["-KILL", &pid.to_string()])
+            .status();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn shutdown_allows_adapter_to_reap_nested_process_group() {
+        let (mut client, nested_pid) = spawn_nested_process_group_fixture().await;
+
+        client.shutdown().await;
+
+        let nested_gone = wait_for_process_exit(nested_pid).await;
+        if !nested_gone {
+            kill_failed_probe(nested_pid);
+        }
+        assert!(
+            nested_gone,
+            "shutdown orphaned nested bridge process {nested_pid}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn drop_allows_adapter_to_reap_nested_process_group() {
+        let (client, nested_pid) = spawn_nested_process_group_fixture().await;
+
+        drop(client);
+
+        let nested_gone = wait_for_process_exit(nested_pid).await;
+        if !nested_gone {
+            kill_failed_probe(nested_pid);
+        }
+        assert!(
+            nested_gone,
+            "dropping AcpClient orphaned nested bridge process {nested_pid}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn shutdown_hard_kills_sigterm_ignoring_process_group() {
+        let mut client = spawn_script(
+            r#"
+trap '' TERM
+printf "%s\n" "$$"
+while :; do sleep 1; done
+"#,
+        )
+        .await;
+        let child_pid = client
+            .reader
+            .next()
+            .await
+            .expect("stubborn adapter produced no PID")
+            .expect("stubborn adapter PID line was unreadable")
+            .parse::<u32>()
+            .expect("stubborn adapter PID was not numeric");
+
+        client.shutdown().await;
+
+        assert!(
+            !process_exists(child_pid),
+            "SIGTERM-ignoring adapter process {child_pid} survived hard fallback"
+        );
     }
 
     #[cfg(unix)]

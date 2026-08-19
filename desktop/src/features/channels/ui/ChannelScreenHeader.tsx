@@ -6,6 +6,7 @@ import type { EphemeralChannelDisplay } from "@/features/channels/lib/ephemeralC
 import type { ActiveDmHeaderParticipant } from "@/features/channels/useActiveChannelHeader";
 import { getChannelDescription } from "@/features/channels/lib/channelDescription";
 import { getDmParticipantPreview } from "@/features/channels/lib/dmParticipantDisplay";
+import { AgentConstructControls } from "@/features/agents/construct/ui/AgentConstructControls";
 import { ChannelHeaderStatusBadge } from "@/features/channels/ui/ChannelHeaderStatusBadge";
 import { ChannelMembersBar } from "@/features/channels/ui/ChannelMembersBar";
 import {
@@ -118,6 +119,10 @@ export function ChannelScreenHeader({
   ) : null;
   const actions = activeChannel ? (
     <div className="flex items-center gap-1">
+      <AgentConstructControls
+        channel={activeChannel}
+        currentPubkey={currentPubkey}
+      />
       {terminalButton}
       {channelActions}
     </div>
