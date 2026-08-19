@@ -20,12 +20,13 @@ import { friendlyAgentLastError } from "@/features/agents/lib/friendlyAgentLastE
 
 export const WRITING_BOT_RUNTIME_ID = "openclaw";
 export const WRITING_BOT_FALLBACK_NAME = "Writing bot";
-/** Cheap slice marker. Do not put this in persona envVars — those merge into spawn. */
 export const WRITING_BOT_PROMPT_MARKER = "You are a writing bot.";
+export const WRITING_BOT_SESSION_SCOPE = "buzz-construct";
 
 export type ConstructFailureCode =
   | "empty_job"
   | "openclaw_unavailable"
+  | "access_setup_failed"
   | "create_failed"
   | "start_failed";
 
@@ -41,6 +42,8 @@ export type OpenClawRuntimeResult =
 const EMPTY_JOB_COPY = "Tell this writing bot what you want help writing.";
 const OPENCLAW_UNAVAILABLE_COPY =
   "This writing bot needs OpenClaw on this computer. Install OpenClaw, then try again.";
+const ACCESS_SETUP_FAILED_COPY =
+  "Couldn't prepare this writing bot's restricted OpenClaw access. No bot was created.";
 const CREATE_FAILED_COPY = "Couldn't create this writing bot. Try again.";
 const START_FAILED_COPY =
   "Your writing bot is ready, but it didn't start. Press Resume to try again.";
@@ -51,6 +54,8 @@ export function constructFailureCopy(code: ConstructFailureCode): string {
       return EMPTY_JOB_COPY;
     case "openclaw_unavailable":
       return OPENCLAW_UNAVAILABLE_COPY;
+    case "access_setup_failed":
+      return ACCESS_SETUP_FAILED_COPY;
     case "create_failed":
       return CREATE_FAILED_COPY;
     case "start_failed":
@@ -68,6 +73,24 @@ export function constructFailure(
     return { code, copy: base };
   }
   return { code, copy: `${base} ${trimmed}` };
+}
+
+export function buildWritingBotSessionKey(
+  openClawAgentId: string,
+  personaId: string,
+): string {
+  return `agent:${openClawAgentId}:${WRITING_BOT_SESSION_SCOPE}:${personaId}`;
+}
+
+export function buildWritingBotAgentArgs(
+  openClawAgentId: string,
+  personaId: string,
+): string[] {
+  return [
+    "acp",
+    "--session",
+    buildWritingBotSessionKey(openClawAgentId, personaId),
+  ];
 }
 
 export function resolveOpenClawRuntime(
@@ -125,13 +148,14 @@ export function buildWritingBotSystemPrompt(job: string): string {
 }
 
 /**
- * Agent Construct header controls match this marker, not every local OpenClaw
- * 1:1 DM. Builder-created OpenClaw agents keep the profile Start/Stop path.
+ * Agent Construct header controls match the dedicated stable OpenClaw session,
+ * not prompt text. Builder-created OpenClaw agents therefore cannot be
+ * misclassified when they happen to use the same prose.
  */
 export function isConstructWritingBotAgent(
   agent: Pick<
     ManagedAgent,
-    "backend" | "agentCommand" | "runtime" | "systemPrompt"
+    "backend" | "agentCommand" | "runtime" | "agentArgs"
   >,
 ): boolean {
   if (agent.backend.type !== "local") {
@@ -143,7 +167,13 @@ export function isConstructWritingBotAgent(
   if (!isOpenClaw) {
     return false;
   }
-  return (agent.systemPrompt ?? "").startsWith(WRITING_BOT_PROMPT_MARKER);
+  const sessionIndex = (agent.agentArgs ?? []).indexOf("--session");
+  return (
+    sessionIndex >= 0 &&
+    ((agent.agentArgs ?? [])[sessionIndex + 1] ?? "").includes(
+      `:${WRITING_BOT_SESSION_SCOPE}:`,
+    )
+  );
 }
 
 export function constructPrimaryActionLabel(

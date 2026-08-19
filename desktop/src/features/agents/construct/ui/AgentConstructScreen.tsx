@@ -4,7 +4,18 @@ import { toast } from "sonner";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCreateWritingBot } from "@/features/agents/construct/useCreateWritingBot";
 import { writingBotStartErrorCopy } from "@/features/agents/construct/writingBot";
+import { showAgentProfileSyncWarning } from "@/features/agents/ui/agentProfileSyncWarning";
 import { ChatHeader } from "@/features/chat/ui/ChatHeader";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/shared/ui/alert-dialog";
 import { Button } from "@/shared/ui/button";
 import { Spinner } from "@/shared/ui/spinner";
 
@@ -14,37 +25,45 @@ export function AgentConstructScreen() {
   const [job, setJob] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
+  const [confirmAccess, setConfirmAccess] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
   React.useEffect(() => {
     textareaRef.current?.focus({ preventScroll: true });
   }, []);
 
+  const createApprovedBot = React.useCallback(async () => {
+    setError(null);
+    setStatus("Starting your writing bot…");
+    const result = await create(job);
+    if (!result.ok) {
+      setStatus(null);
+      setError(result.failure.copy);
+      return;
+    }
+    const startCopy = writingBotStartErrorCopy(result.spawnError);
+    if (startCopy) {
+      toast.error(startCopy);
+    }
+    showAgentProfileSyncWarning(result.agent.name, result.profileSyncError);
+    if (result.sendError) {
+      toast.error(
+        result.sendError.startsWith("Couldn't")
+          ? result.sendError
+          : `Couldn't send your first message. Try again in this conversation. ${result.sendError}`,
+      );
+    }
+    await goChannel(result.channel.id);
+  }, [create, goChannel, job]);
+
   const handleSubmit = React.useCallback(
-    async (event?: React.FormEvent) => {
+    (event?: React.FormEvent) => {
       event?.preventDefault();
+      if (!job.trim() || isCreating) return;
       setError(null);
-      setStatus("Starting your writing bot…");
-      const result = await create(job);
-      if (!result.ok) {
-        setStatus(null);
-        setError(result.failure.copy);
-        return;
-      }
-      const startCopy = writingBotStartErrorCopy(result.spawnError);
-      if (startCopy) {
-        toast.error(startCopy);
-      }
-      if (result.sendError) {
-        toast.error(
-          result.sendError.startsWith("Couldn't")
-            ? result.sendError
-            : `Couldn't send your first message. Try again in this conversation. ${result.sendError}`,
-        );
-      }
-      await goChannel(result.channel.id);
+      setConfirmAccess(true);
     },
-    [create, goChannel, job],
+    [isCreating, job],
   );
 
   return (
@@ -124,6 +143,34 @@ export function AgentConstructScreen() {
           </div>
         </form>
       </div>
+      <AlertDialog onOpenChange={setConfirmAccess} open={confirmAccess}>
+        <AlertDialogContent data-testid="agent-construct-access-confirmation">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Give this bot restricted access?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Buzz will create a separate OpenClaw writing identity. It can
+              answer in this conversation and check its session status, but it
+              cannot read files, run commands, browse, or send messages
+              elsewhere.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCreating}>Cancel</AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button
+                data-testid="agent-construct-access-approve"
+                disabled={isCreating}
+                onClick={() => void createApprovedBot()}
+                type="button"
+              >
+                {isCreating ? "Preparing…" : "Allow and create"}
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

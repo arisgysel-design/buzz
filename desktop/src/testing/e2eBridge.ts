@@ -12854,6 +12854,8 @@ export function maybeInstallE2eTauriMocks() {
         return (config?.mock?.bakedBuildEnv ?? []).map((entry) => entry.key);
       case "agent_access_owner_only":
         return config?.mock?.ownerOnlyAccessBuild ?? false;
+      case "ensure_openclaw_construct_access":
+        return { agentId: "buzz-writing", toolProfile: "minimal" };
       case "update_managed_agent":
         return handleUpdateManagedAgent(
           payload as Parameters<typeof handleUpdateManagedAgent>[0],

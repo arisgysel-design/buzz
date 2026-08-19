@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { isOneToOneDm, ownedLocalAgentFromDm } from "./ownedDmAgent.ts";
-import { WRITING_BOT_PROMPT_MARKER } from "./writingBot.ts";
 
 const SELF = "aa".repeat(32);
 const BOT = "bb".repeat(32);
@@ -16,7 +15,11 @@ function agent(pubkey, backend = { type: "local" }, extras = {}) {
     status: "running",
     agentCommand: "openclaw",
     runtime: null,
-    systemPrompt: WRITING_BOT_PROMPT_MARKER,
+    agentArgs: [
+      "acp",
+      "--session",
+      "agent:buzz-writing:buzz-construct:persona-1",
+    ],
     ...extras,
   };
 }
@@ -42,7 +45,7 @@ test("ownedLocalAgentFromDm ignores builder-created OpenClaw agents", () => {
           BOT,
           { type: "local" },
           {
-            systemPrompt: "You are a helpful coding assistant.",
+            agentArgs: [],
           },
         ),
       ],
@@ -53,7 +56,7 @@ test("ownedLocalAgentFromDm ignores builder-created OpenClaw agents", () => {
   assert.equal(
     ownedLocalAgentFromDm(
       { channelType: "dm", participantPubkeys: [SELF, BOT] },
-      [agent(BOT, { type: "local" }, { systemPrompt: null })],
+      [agent(BOT, { type: "local" }, { agentArgs: ["acp"] })],
       SELF,
     ),
     null,

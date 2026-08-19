@@ -11,6 +11,7 @@ import type {
 
 import {
   buildWritingBotSystemPrompt,
+  buildWritingBotAgentArgs,
   constructFailure,
   nameWritingBot,
   resolveOpenClawRuntime,
@@ -20,6 +21,7 @@ import {
 
 export type CreateWritingBotDeps = {
   listRuntimes: () => Promise<readonly AcpRuntimeCatalogEntry[]>;
+  ensureAccess: () => Promise<{ agentId: string }>;
   createPersona: (input: CreatePersonaInput) => Promise<AgentPersona>;
   createAgent: (
     input: CreateManagedAgentInput,
@@ -89,6 +91,19 @@ export async function createWritingBot(
     return runtimeResult;
   }
 
+  let access: { agentId: string };
+  try {
+    access = await deps.ensureAccess();
+  } catch (error) {
+    return {
+      ok: false,
+      failure: constructFailure(
+        "access_setup_failed",
+        error instanceof Error ? error.message : undefined,
+      ),
+    };
+  }
+
   const displayName = nameWritingBot(trimmedJob);
   const systemPrompt = buildWritingBotSystemPrompt(trimmedJob);
 
@@ -106,6 +121,7 @@ export async function createWritingBot(
       persona,
       runtimeResult.runtime,
     );
+    agentInput.agentArgs = buildWritingBotAgentArgs(access.agentId, persona.id);
     created = await deps.createAgent(agentInput);
 
     const channel = await deps.openDm({ pubkeys: [created.agent.pubkey] });

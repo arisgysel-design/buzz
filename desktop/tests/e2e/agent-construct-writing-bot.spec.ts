@@ -84,6 +84,12 @@ test.describe("Agent Construct writing bot", () => {
 
     await page.getByTestId("agent-construct-job").fill(JOB);
     await page.getByTestId("agent-construct-send").click();
+    await expect(
+      page.getByTestId("agent-construct-access-confirmation"),
+    ).toContainText(
+      /cannot read files, run commands, browse, or send messages/i,
+    );
+    await page.getByTestId("agent-construct-access-approve").click();
 
     await expect(page.getByTestId("agent-construct-screen")).toHaveCount(0, {
       timeout: 10_000,
@@ -98,6 +104,9 @@ test.describe("Agent Construct writing bot", () => {
 
     const afterCreate = await readCommandLog(page);
     expect(commandCount(afterCreate, "create_persona")).toBe(1);
+    expect(commandCount(afterCreate, "ensure_openclaw_construct_access")).toBe(
+      1,
+    );
     expect(commandCount(afterCreate, "create_managed_agent")).toBe(1);
     expect(commandCount(afterCreate, "open_dm")).toBe(1);
     expect(commandCount(afterCreate, "send_channel_message")).toBe(1);
@@ -116,10 +125,19 @@ test.describe("Agent Construct writing bot", () => {
     );
     const agentInput = (
       created?.payload as {
-        input?: { agentCommand?: string; spawnAfterCreate?: boolean };
+        input?: {
+          agentArgs?: string[];
+          agentCommand?: string;
+          spawnAfterCreate?: boolean;
+        };
       }
     )?.input;
     expect(agentInput?.agentCommand).toBe("openclaw");
+    expect(agentInput?.agentArgs).toEqual([
+      "acp",
+      "--session",
+      expect.stringMatching(/^agent:buzz-writing:buzz-construct:/),
+    ]);
     expect(agentInput?.spawnAfterCreate).toBe(true);
 
     await page.getByTestId("agent-construct-stop-resume").click();
@@ -168,6 +186,7 @@ test.describe("Agent Construct writing bot", () => {
 
     await page.getByTestId("agent-construct-job").fill(JOB);
     await page.getByTestId("agent-construct-send").click();
+    await page.getByTestId("agent-construct-access-approve").click();
 
     await expect(page.getByTestId("agent-construct-error")).toContainText(
       "OpenClaw",
@@ -179,6 +198,7 @@ test.describe("Agent Construct writing bot", () => {
 
     const log = await readCommandLog(page);
     expect(commandCount(log, "create_persona")).toBe(0);
+    expect(commandCount(log, "ensure_openclaw_construct_access")).toBe(0);
     expect(commandCount(log, "create_managed_agent")).toBe(0);
     expect(commandCount(log, "open_dm")).toBe(0);
     expect(commandCount(log, "send_channel_message")).toBe(0);

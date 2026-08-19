@@ -13,6 +13,7 @@ import { useOpenDmMutation } from "@/features/channels/hooks";
 import { useSendMessageMutation } from "@/features/messages/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { discoverAcpRuntimes } from "@/shared/api/tauri";
+import { ensureOpenClawConstructAccess } from "@/shared/api/tauriAgentConstruct";
 
 export function useCreateWritingBot() {
   const identityQuery = useIdentityQuery();
@@ -33,6 +34,7 @@ export function useCreateWritingBot() {
         return await createWritingBot(job, {
           listRuntimes: async () =>
             runtimesQuery.data ?? (await discoverAcpRuntimes()),
+          ensureAccess: ensureOpenClawConstructAccess,
           createPersona: (input) => createPersonaMutation.mutateAsync(input),
           createAgent: (input) => createAgentMutation.mutateAsync(input),
           openDm: (input) => openDmMutation.mutateAsync(input),

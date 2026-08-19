@@ -20,7 +20,7 @@ export function isOneToOneDm(
  * agents return null so those keep the profile Start/Stop path.
  *
  * Conversation authority stays the relay DM. Matching uses the existing
- * managed-agent record plus the writing-bot prompt marker.
+ * managed-agent record plus the dedicated stable-session scope.
  */
 export function ownedLocalAgentFromDm(
   channel: Pick<Channel, "channelType" | "participantPubkeys"> | null,

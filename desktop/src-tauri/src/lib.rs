@@ -111,8 +111,7 @@ pub fn run() {
             );
         }
         Err(error) => {
-            // Fall back to Tauri's default runtime: the app still works,
-            // only deep mesh-llm futures are at risk of stack overflow.
+            // Fall back to Tauri's default runtime; only deep mesh futures risk stack overflow.
             eprintln!("buzz-mesh: failed to build big-stack tokio runtime, using default: {error}");
         }
     }
@@ -780,6 +779,7 @@ pub fn run() {
             get_agent_models,
             discover_agent_models,
             agent_access_owner_only,
+            ensure_openclaw_construct_access,
             get_agent_config_surface,
             get_runtime_file_config,
             get_baked_build_env_keys,

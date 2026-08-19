@@ -22,12 +22,18 @@ This is a consumer flow. The screen asks what the person wants help writing. It 
 
 1. **Plus** on the Agents sidebar row (and **New writing bot** on the Agents page) opens `/agents/new`.
 2. The person describes a writing job in ordinary language and presses **Send**.
-3. Buzz creates an OpenClaw writing bot using existing writers only:
+3. Buzz explains the bot's restricted access and requires explicit approval.
+4. Buzz idempotently provisions a dedicated OpenClaw identity, `buzz-writing`, with
+   `tools.profile = "minimal"` and elevated access disabled. An existing identity
+   with broader rights is refused rather than silently reused.
+5. Buzz creates the writing bot using existing writers only:
    - persona = config (system prompt + OpenClaw runtime)
    - managed agent = identity + ACP lifecycle (`spawnAfterCreate`)
    - DM + first message = the conversation on the relay event log
-4. The app opens that DM. **Stop / Resume / Restart** sit in the conversation header.
-5. Stop/Resume and Restart keep the same DM history. Restart is a new ACP session on the same agent identity; replay is the relay transcript, not a second memory store.
+6. The app opens that DM. **Stop / Resume / Restart** sit in the conversation header.
+7. Stop/Resume and Restart keep the same DM and the same stable OpenClaw Gateway
+   session (`agent:buzz-writing:buzz-construct:<persona-id>`). Restart replaces the
+   ACP process, while OpenClaw reloads the prior model transcript from that session.
 
 ## One state, one writer
 
@@ -35,7 +41,8 @@ This is a consumer flow. The screen asks what the person wants help writing. It 
 | --- | --- |
 | Who the bot is / how it is configured | Buzz persona + managed agent |
 | The conversation | Buzz DM + relay events |
-| Process / session | buzz-acp start/stop (SIGTERM → wait → SIGKILL; no `kill_on_drop`) |
+| Process / session | buzz-acp start/stop (SIGTERM → wait → SIGKILL) + stable OpenClaw Gateway session |
+| Runtime authority | dedicated `buzz-writing` OpenClaw identity; minimal tool profile; elevated disabled |
 | Knowledge / memory / retrieval | GBrain — **left open**, unused here |
 
 No parallel agent, message, or runtime store was added.
@@ -44,6 +51,8 @@ No parallel agent, message, or runtime store was added.
 
 - Empty job: the Send button stays disabled; the create path also refuses without writing state.
 - OpenClaw missing: visible copy (“needs OpenClaw on this computer”), no persona/agent/DM writes.
+- Restricted-access setup refused or invalid: visible recoverable failure, no persona/agent/DM writes.
+- Partial access provisioning failure: the newly added OpenClaw identity is rolled back.
 - Create failure: stays on the construct screen with recoverable copy.
 - Start failure: the DM still opens; header copy + toast tell the person to press **Resume**.
 - First-message send failure: the DM still opens so the person can send again.
@@ -66,11 +75,13 @@ There is no transactional backend create that spans persona + managed agent + DM
 
 Retry after those failures does not accumulate leftover personas or managed agents.
 
-Stop/Resume/Restart in the DM header match the writing-bot prompt marker (`You are a writing bot.`), not every local OpenClaw 1:1 DM. Builder-created OpenClaw agents keep the profile Start/Stop path.
+Stop/Resume/Restart in the DM header match the explicit stable session scope in
+`agentArgs` (`:buzz-construct:`), not prompt text and not every local OpenClaw 1:1
+DM. Builder-created OpenClaw agents keep the profile Start/Stop path.
 
 ## Tests / evidence
 
-Automated (this Linux environment):
+Automated (macOS):
 
 ```bash
 . ./bin/activate-hermit
@@ -79,21 +90,33 @@ pnpm exec biome check src/features/agents/construct src/app/routes/agents.new.ts
 pnpm typecheck
 node --import ./test-loader.mjs --experimental-strip-types --test \
   src/features/agents/construct/*.test.mjs src/app/AppShell.helpers.test.mjs
-pnpm build:e2e && pnpm exec playwright test --project=smoke \
+pnpm build:e2e && BUZZ_E2E_PORT=4174 pnpm exec playwright test --project=smoke \
   tests/e2e/agent-construct-writing-bot.spec.ts
 ```
 
 Results:
 
-- 25 construct / shell-route unit tests passed (including createAgent/openDm compensation, retry-without-orphans, construct-bot isolation, word-boundary name truncation)
-- desktop `tsc --noEmit` passed
-- Playwright smoke spec `agent-construct-writing-bot.spec.ts`: 3 passed (Plus → Stop/Resume/Restart keeps the DM; missing OpenClaw refuses create; Agents page button opens the same screen)
+- 21 focused construct tests passed (including access refusal, compensation,
+  retry-without-orphans, stable session args, and explicit construct-bot isolation)
+- full desktop suite: 5,059 tests passed; desktop typecheck and Tauri Rust compile passed
+- three Rust policy tests passed (restricted accepted; broader/elevated and duplicate identities refused)
+- file-size ratchet, text-pixel check, public-key truncation check, and canonical route generation passed
+- Playwright smoke spec: 3 passed (approval + create + Stop/Resume/Restart;
+  missing OpenClaw refusal; Agents-page entry point)
+- isolated OpenClaw provisioning exercised add → minimal/elevated-off → config validate
+  without touching the live OpenClaw configuration
+- real OpenClaw ACP replay gate passed: process 1 stored a random token, exited via
+  SIGTERM, process 2 used the same stable Gateway session and returned that token;
+  ACP process baseline before/after was empty (zero orphans)
 
-Lifecycle code in `crates/buzz-acp/src/acp.rs` was not changed. Prior macOS OpenClaw initialize/stop evidence from the lifecycle-gate branch still applies to process reaping, but was **not re-run** here. `just ci` was not run (too heavy for this slice).
+Lifecycle code in `crates/buzz-acp/src/acp.rs` was not changed. The live replay gate
+used a disposable `othello` session because the PR must not mutate the machine's
+live OpenClaw agent configuration; the provisioning command path was verified
+against an isolated temporary OpenClaw state directory.
 
 ## Still open
 
 - **GBrain** stays the knowledge/memory/retrieval boundary. This slice does not persist a second memory and does not call GBrain.
-- **Mac + live OpenClaw** initialize/stop/restart of a writing bot created through this UI was not run on this Linux VM. Re-check before treating the slice as merge-ready for a machine that actually launches OpenClaw.
-- Out of scope: marketplace, full desktop takeover, autonomy, grants/secret handoff, per-agent computer, artifacts beyond the DM, Golden Path access-approval.
+- Out of scope: marketplace, full desktop takeover, autonomy, grants/secret handoff,
+  per-agent computer, and artifacts beyond the DM.
 - No production deploy. No mutation of a separate Agent Construct repository. No upstream `block/buzz` PR.

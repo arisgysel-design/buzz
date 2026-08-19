@@ -74,6 +74,7 @@ function recordingCleanup() {
   return {
     calls,
     deps: {
+      ensureAccess: async () => ({ agentId: "buzz-writing" }),
       stopAgent: async (pubkey) => {
         calls.push(["stop", pubkey]);
       },
@@ -170,6 +171,11 @@ test("createWritingBot uses Buzz persona, agent, DM, and message writers", async
       assert.equal(input.agentCommand, "openclaw");
       assert.equal(input.spawnAfterCreate, true);
       assert.equal(input.backend.type, "local");
+      assert.deepEqual(input.agentArgs, [
+        "acp",
+        "--session",
+        "agent:buzz-writing:buzz-construct:persona-1",
+      ]);
       return {
         agent: agentRecord(),
         privateKeyNsec: "nsec1mock",
@@ -203,6 +209,38 @@ test("createWritingBot uses Buzz persona, agent, DM, and message writers", async
   assert.equal(calls[1][0], "agent");
   assert.equal(calls[2][0], "dm");
   assert.equal(calls[3][0], "send");
+  assert.deepEqual(cleanup.calls, []);
+});
+
+test("createWritingBot stops before persona creation when access setup fails", async () => {
+  const calls = [];
+  const cleanup = recordingCleanup();
+  const result = await createWritingBot("write weekly blog posts", {
+    ...cleanup.deps,
+    listRuntimes: async () => [availableOpenClaw()],
+    ensureAccess: async () => {
+      throw new Error("existing agent has broader access");
+    },
+    createPersona: async () => {
+      calls.push("persona");
+      return persona();
+    },
+    createAgent: async () => {
+      throw new Error("should not create");
+    },
+    openDm: async () => {
+      throw new Error("should not open");
+    },
+    sendMessage: async () => {
+      throw new Error("should not send");
+    },
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.failure.code, "access_setup_failed");
+    assert.match(result.failure.copy, /broader access/);
+  }
+  assert.deepEqual(calls, []);
   assert.deepEqual(cleanup.calls, []);
 });
 
@@ -298,6 +336,7 @@ test("createWritingBot retry after mid-path failures does not accumulate orphans
 
   const deps = {
     listRuntimes: async () => [availableOpenClaw()],
+    ensureAccess: async () => ({ agentId: "buzz-writing" }),
     createPersona: async () => {
       attempt += 1;
       const id = `persona-${attempt}`;

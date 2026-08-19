@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   buildWritingBotSystemPrompt,
+  buildWritingBotAgentArgs,
+  buildWritingBotSessionKey,
   constructFailure,
   constructFailureCopy,
   constructPrimaryActionLabel,
@@ -11,7 +13,6 @@ import {
   resolveOpenClawRuntime,
   writingBotStartErrorCopy,
   WRITING_BOT_FALLBACK_NAME,
-  WRITING_BOT_PROMPT_MARKER,
   WRITING_BOT_RUNTIME_ID,
 } from "./writingBot.ts";
 
@@ -66,13 +67,17 @@ test("nameWritingBot drops an incomplete last word instead of cutting mid-word",
   );
 });
 
-test("isConstructWritingBotAgent requires local OpenClaw plus the prompt marker", () => {
+test("isConstructWritingBotAgent requires local OpenClaw plus the stable session scope", () => {
   assert.equal(
     isConstructWritingBotAgent({
       backend: { type: "local" },
       agentCommand: "openclaw",
       runtime: null,
-      systemPrompt: `${WRITING_BOT_PROMPT_MARKER} Help the person write.`,
+      agentArgs: [
+        "acp",
+        "--session",
+        "agent:buzz-writing:buzz-construct:persona-1",
+      ],
     }),
     true,
   );
@@ -81,10 +86,22 @@ test("isConstructWritingBotAgent requires local OpenClaw plus the prompt marker"
       backend: { type: "local" },
       agentCommand: "openclaw",
       runtime: "openclaw",
-      systemPrompt: "You are a helpful coding assistant.",
+      agentArgs: [],
     }),
     false,
   );
+});
+
+test("writing bot session keys are stable and scoped to the persona", () => {
+  assert.equal(
+    buildWritingBotSessionKey("buzz-writing", "persona-1"),
+    "agent:buzz-writing:buzz-construct:persona-1",
+  );
+  assert.deepEqual(buildWritingBotAgentArgs("buzz-writing", "persona-1"), [
+    "acp",
+    "--session",
+    "agent:buzz-writing:buzz-construct:persona-1",
+  ]);
 });
 
 test("buildWritingBotSystemPrompt puts the job in the prompt and stays conversation-owned", () => {
