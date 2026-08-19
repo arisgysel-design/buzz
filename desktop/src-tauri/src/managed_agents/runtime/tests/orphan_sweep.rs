@@ -55,8 +55,7 @@ fn periodic_sweep_reaps_confirmed_same_instance_orphan() {
     );
     let mut first_seen = HashSet::new();
     for _ in 0..20 {
-        first_seen =
-            super::super::orphan_sweep::collect_same_instance_orphans(&instance_id, &[]);
+        first_seen = super::super::orphan_sweep::collect_same_instance_orphans(&instance_id, &[]);
         if first_seen.contains(&orphan_pid) {
             break;
         }
