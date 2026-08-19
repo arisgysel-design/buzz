@@ -55,11 +55,21 @@ Automated (this Linux environment):
 ```bash
 . ./bin/activate-hermit
 cd desktop
-pnpm test -- src/features/agents/construct src/app/AppShell.helpers.test.mjs
-pnpm test:e2e:smoke -- tests/e2e/agent-construct-writing-bot.spec.ts
+pnpm exec biome check src/features/agents/construct src/app/routes/agents.new.tsx
+pnpm typecheck
+node --import ./test-loader.mjs --experimental-strip-types --test \
+  src/features/agents/construct/*.test.mjs src/app/AppShell.helpers.test.mjs
+pnpm build:e2e && pnpm exec playwright test --project=smoke \
+  tests/e2e/agent-construct-writing-bot.spec.ts
 ```
 
-Lifecycle code in `crates/buzz-acp/src/acp.rs` was not changed. Prior macOS OpenClaw initialize/stop evidence from the lifecycle-gate branch still applies to process reaping, but was **not re-run** here.
+Results:
+
+- 18 construct / shell-route unit tests passed
+- desktop `tsc --noEmit` passed
+- Playwright smoke spec `agent-construct-writing-bot.spec.ts`: 3 passed (Plus → Stop/Resume/Restart keeps the DM; missing OpenClaw refuses create; Agents page button opens the same screen)
+
+Lifecycle code in `crates/buzz-acp/src/acp.rs` was not changed. Prior macOS OpenClaw initialize/stop evidence from the lifecycle-gate branch still applies to process reaping, but was **not re-run** here. `just ci` was not run (too heavy for this slice).
 
 ## Still open
 
