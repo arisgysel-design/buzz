@@ -36,6 +36,7 @@ export function useCreateWritingBot() {
               content: input.content,
               mentionPubkeys: input.mentionPubkeys,
               targetChannel: input.targetChannel,
+              transport: "http",
             }),
         });
       } finally {
