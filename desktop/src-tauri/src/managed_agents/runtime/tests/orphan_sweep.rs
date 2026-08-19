@@ -1,14 +1,16 @@
+use super::super::process::buzz_marker_entry;
+
 #[test]
 fn marker_entry_is_namespaced_by_instance_id() {
     // The spawn stamp and sweep matcher share this on-the-wire format. Namespacing
     // prevents a dev build (`...app.dev`) from matching a release build (`...app`).
     assert_eq!(
-        super::super::buzz_marker_entry("xyz.block.buzz.app"),
+        buzz_marker_entry("xyz.block.buzz.app"),
         b"BUZZ_MANAGED_AGENT=xyz.block.buzz.app".to_vec()
     );
     assert_ne!(
-        super::super::buzz_marker_entry("xyz.block.buzz.app"),
-        super::super::buzz_marker_entry("xyz.block.buzz.app.dev")
+        buzz_marker_entry("xyz.block.buzz.app"),
+        buzz_marker_entry("xyz.block.buzz.app.dev")
     );
 }
 
