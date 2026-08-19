@@ -85,7 +85,7 @@ pnpm build:e2e && pnpm exec playwright test --project=smoke \
 
 Results:
 
-- construct / shell-route unit tests (compensation, construct-bot isolation, name truncation)
+- 25 construct / shell-route unit tests passed (including createAgent/openDm compensation, retry-without-orphans, construct-bot isolation, word-boundary name truncation)
 - desktop `tsc --noEmit` passed
 - Playwright smoke spec `agent-construct-writing-bot.spec.ts`: 3 passed (Plus → Stop/Resume/Restart keeps the DM; missing OpenClaw refuses create; Agents page button opens the same screen)
 
