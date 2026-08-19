@@ -1,6 +1,6 @@
 # Agent Construct on Buzz: Foundation Handoff
 
-Status: lifecycle foundation verified; user-visible writing-bot vertical slice lives on a follow-up branch
+Status: lifecycle foundation and user-visible writing-bot vertical slice verified on this branch
 
 Date: 2026-08-19
 
@@ -14,7 +14,7 @@ Evaluate Buzz as the agent fabric beneath Agent Construct while preserving Agent
 
 `Plus -> describe the job in ordinary language -> approve required access -> work with the finished bot`
 
-This branch closes the first hard prerequisite: Buzz must start, stop, drop, and restart an OpenClaw ACP adapter without leaving processes behind. It does not yet build the user-visible Agent Construct flow.
+This branch closes the first hard prerequisite: Buzz must start, stop, drop, and restart an OpenClaw ACP adapter without leaving processes behind. It also contains the user-visible writing-bot vertical slice documented in [agent-construct-vertical-slice.md](agent-construct-vertical-slice.md).
 
 ## Architecture boundary
 
@@ -49,7 +49,7 @@ The minimal fix in `crates/buzz-acp/src/acp.rs`:
 4. disables Tokio's immediate `kill_on_drop` path;
 5. makes `Drop` send a best-effort `SIGTERM`, so cooperative adapters can clean nested groups.
 
-The desktop ownership sweeper remains the abort backstop. A real macOS regression test in `desktop/src-tauri/src/managed_agents/runtime/tests.rs` proves that a marked same-instance orphan is detected on the first sweep and reaped on the confirming second sweep.
+The desktop ownership sweeper remains the abort backstop. A real macOS regression test in `desktop/src-tauri/src/managed_agents/runtime/tests/orphan_sweep.rs` proves that a marked same-instance orphan is detected on the first sweep and reaped on the confirming second sweep.
 
 ## Verification evidence
 
@@ -60,7 +60,8 @@ Run from the repository root after activating the pinned toolchain:
 cargo test -p buzz-acp
 cargo clippy -p buzz-acp --all-targets -- -D warnings
 cargo test --manifest-path desktop/src-tauri/Cargo.toml \
-  periodic_sweep_reaps_confirmed_same_instance_orphan -- --exact
+  managed_agents::runtime::tests::orphan_sweep::periodic_sweep_reaps_confirmed_same_instance_orphan \
+  -- --exact
 git diff --check
 ```
 
@@ -72,11 +73,11 @@ Verified results on macOS:
 - Ten real `buzz-acp -> openclaw acp` initialize/stop cycles passed.
 - Zero `buzz-acp` or `openclaw-acp` processes remained afterward.
 
-The repository-wide `just ci` gate was not run for this focused foundation spike; run it before proposing an upstream merge.
+The focused lifecycle gates and the full vertical-slice suite passed. The final stacked PR must still pass its own hosted CI before merge.
 
 ## Next product gate
 
-The isolated vertical slice is implemented on a branch based on this one. See [agent-construct-vertical-slice.md](agent-construct-vertical-slice.md).
+The isolated vertical slice is implemented on this branch. See [agent-construct-vertical-slice.md](agent-construct-vertical-slice.md).
 
 The original gate remains:
 
@@ -108,4 +109,4 @@ Do not broaden the slice into marketplace, full desktop takeover, GBrain integra
 - No production deployment or restart.
 - No mutation of the existing Agent Construct repository.
 - No upstream `block/buzz` issue or pull request.
-- No Golden Path implementation yet.
+- No installable release or production rollout.

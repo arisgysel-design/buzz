@@ -4,7 +4,7 @@ Status: user-visible writing-bot slice on top of the ACP lifecycle foundation
 
 Date: 2026-08-19
 
-Branch: `cursor/agent-construct-vertical-slice-8390` (based on `agent-construct-lifecycle-gate`)
+Branch: `agent-construct-lifecycle-gate` (vertical slice merged from `cursor/agent-construct-vertical-slice-8390`)
 
 Pinned Buzz base: `93114c9c65138397de39729fde0a816eb9f314ab`
 
