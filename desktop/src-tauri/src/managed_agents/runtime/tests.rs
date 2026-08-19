@@ -921,12 +921,10 @@ fn periodic_sweep_reaps_confirmed_same_instance_orphan() {
         .spawn()
         .expect("spawn marked orphan probe");
     let orphan_pid = orphan.id();
-
     assert!(
         super::process_has_buzz_marker(orphan_pid, &instance_id),
         "orphan probe did not inherit its ownership marker"
     );
-
     let mut first_seen = HashSet::new();
     for _ in 0..20 {
         first_seen = super::orphan_sweep::collect_same_instance_orphans(&instance_id, &[]);
