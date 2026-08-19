@@ -160,7 +160,7 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
-  if (pathname === "/agents") {
+  if (pathname === "/agents" || pathname.startsWith("/agents/")) {
     return {
       selectedChannelId: null,
       selectedView: "agents",

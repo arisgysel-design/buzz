@@ -159,6 +159,7 @@ type AppSidebarProps = {
   selfUserStatus?: UserStatus;
   isPresencePending?: boolean;
   onNewMessage: () => void;
+  onNewWritingBot: () => void;
   onBackgroundClick?: () => void;
   isCreateChannelOpen?: boolean;
   isHuddleCompanionOpen?: boolean;
@@ -226,6 +227,7 @@ export function AppSidebar({
   selfUserStatus,
   isPresencePending,
   onNewMessage,
+  onNewWritingBot,
   isCreateChannelOpen: isCreateChannelOpenProp,
   isHuddleCompanionOpen = false,
   onHuddleEnded,
@@ -608,6 +610,7 @@ export function AppSidebar({
             >
               <AppSidebarPrimaryMenu
                 homeBadgeCount={homeBadgeCount}
+                onNewWritingBot={onNewWritingBot}
                 onSelectAgents={onSelectAgents}
                 onSelectHome={onSelectHome}
                 onSelectProjects={onSelectProjects}

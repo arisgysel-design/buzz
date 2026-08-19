@@ -135,6 +135,7 @@ export default defineConfig({
         "**/settings-section-layout.spec.ts",
         "**/agent-provider-dropdowns.spec.ts",
         "**/agent-lifecycle-feedback.spec.ts",
+        "**/agent-construct-writing-bot.spec.ts",
         "**/agent-access-warning.spec.ts",
         "**/edit-agent-run-on.spec.ts",
         "**/inbox-live-update.spec.ts",

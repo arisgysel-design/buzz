@@ -233,6 +233,17 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goNewWritingBot = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/agents/new",
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goForumPost = React.useCallback(
     (
       channelId: string,
@@ -333,6 +344,7 @@ export function useAppNavigation() {
     goForumPost,
     goHome,
     goNewMessage,
+    goNewWritingBot,
     goProject,
     goProjects,
     goPulse,

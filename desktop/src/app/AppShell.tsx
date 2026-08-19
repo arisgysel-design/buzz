@@ -140,6 +140,7 @@ export function AppShell() {
     goChannel,
     goHome,
     goNewMessage,
+    goNewWritingBot,
     goProjects,
     goPulse,
     goSettings,
@@ -822,6 +823,7 @@ export function AppShell() {
                           addCommunityDialog.onOpenChange
                         }
                         onNewMessage={goNewMessage}
+                        onNewWritingBot={goNewWritingBot}
                         onBackgroundClick={requestFocusedThreadClose}
                         onCreateChannelOpenChange={setIsCreateChannelOpen}
                         onOpenAddCommunity={addCommunityDialog.openDialog}

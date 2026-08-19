@@ -1,0 +1,59 @@
+import * as React from "react";
+
+import { createWritingBot } from "@/features/agents/construct/createWritingBot";
+import {
+  useAcpRuntimesQuery,
+  useCreateManagedAgentMutation,
+  useCreatePersonaMutation,
+} from "@/features/agents/hooks";
+import { useOpenDmMutation } from "@/features/channels/hooks";
+import { useSendMessageMutation } from "@/features/messages/hooks";
+import { useIdentityQuery } from "@/shared/api/hooks";
+import { discoverAcpRuntimes } from "@/shared/api/tauri";
+
+export function useCreateWritingBot() {
+  const identityQuery = useIdentityQuery();
+  const runtimesQuery = useAcpRuntimesQuery();
+  const createPersonaMutation = useCreatePersonaMutation();
+  const createAgentMutation = useCreateManagedAgentMutation();
+  const openDmMutation = useOpenDmMutation();
+  const sendMessageMutation = useSendMessageMutation(null, identityQuery.data);
+  const [isCreating, setIsCreating] = React.useState(false);
+
+  const create = React.useCallback(
+    async (job: string) => {
+      setIsCreating(true);
+      try {
+        return await createWritingBot(job, {
+          listRuntimes: async () =>
+            runtimesQuery.data ?? (await discoverAcpRuntimes()),
+          createPersona: (input) => createPersonaMutation.mutateAsync(input),
+          createAgent: (input) => createAgentMutation.mutateAsync(input),
+          openDm: (input) => openDmMutation.mutateAsync(input),
+          sendMessage: (input) =>
+            sendMessageMutation.mutateAsync({
+              channelId: input.channelId,
+              content: input.content,
+              mentionPubkeys: input.mentionPubkeys,
+              targetChannel: input.targetChannel,
+            }),
+        });
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [
+      createAgentMutation.mutateAsync,
+      createPersonaMutation.mutateAsync,
+      openDmMutation.mutateAsync,
+      runtimesQuery.data,
+      sendMessageMutation.mutateAsync,
+    ],
+  );
+
+  return {
+    create,
+    isCreating,
+    runtimesQuery,
+  };
+}
