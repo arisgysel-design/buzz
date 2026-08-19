@@ -144,6 +144,7 @@ export function AgentsView() {
                     ariaLabel="New writing bot"
                     dataTestId="agent-construct-plus-page"
                     label="New writing bot"
+                    labelClassName="[@container(max-width:48rem)]:hidden"
                     onClick={() => void goNewWritingBot()}
                   />
                   <Button

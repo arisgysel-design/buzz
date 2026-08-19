@@ -7,6 +7,7 @@ type CreateNewButtonProps = {
   dataTestId?: string;
   disabled?: boolean;
   label?: string;
+  labelClassName?: string;
   onClick: () => void;
   variant?: "default" | "outline";
 };
@@ -16,6 +17,7 @@ export function CreateNewButton({
   dataTestId,
   disabled = false,
   label = "New",
+  labelClassName,
   onClick,
   variant = "default",
 }: CreateNewButtonProps) {
@@ -30,7 +32,7 @@ export function CreateNewButton({
       variant={variant}
     >
       <Plus className="h-4 w-4" />
-      {label}
+      <span className={labelClassName}>{label}</span>
     </Button>
   );
 }
