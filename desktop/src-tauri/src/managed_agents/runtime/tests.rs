@@ -929,8 +929,7 @@ fn periodic_sweep_reaps_confirmed_same_instance_orphan() {
 
     let mut first_seen = HashSet::new();
     for _ in 0..20 {
-        first_seen =
-            super::orphan_sweep::collect_same_instance_orphans(&instance_id, &[]);
+        first_seen = super::orphan_sweep::collect_same_instance_orphans(&instance_id, &[]);
         if first_seen.contains(&orphan_pid) {
             break;
         }
@@ -956,7 +955,10 @@ fn periodic_sweep_reaps_confirmed_same_instance_orphan() {
         let _ = super::terminate_process(orphan_pid);
         let _ = orphan.wait();
     }
-    assert!(reaped, "confirmed orphan {orphan_pid} survived periodic sweep");
+    assert!(
+        reaped,
+        "confirmed orphan {orphan_pid} survived periodic sweep"
+    );
 }
 
 // ── pair receipt validation tests ───────────────────────────────────────
