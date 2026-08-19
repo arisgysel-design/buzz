@@ -5,6 +5,9 @@ import {
   useAcpRuntimesQuery,
   useCreateManagedAgentMutation,
   useCreatePersonaMutation,
+  useDeleteManagedAgentMutation,
+  useDeletePersonaMutation,
+  useStopManagedAgentMutation,
 } from "@/features/agents/hooks";
 import { useOpenDmMutation } from "@/features/channels/hooks";
 import { useSendMessageMutation } from "@/features/messages/hooks";
@@ -16,6 +19,9 @@ export function useCreateWritingBot() {
   const runtimesQuery = useAcpRuntimesQuery();
   const createPersonaMutation = useCreatePersonaMutation();
   const createAgentMutation = useCreateManagedAgentMutation();
+  const deletePersonaMutation = useDeletePersonaMutation();
+  const deleteAgentMutation = useDeleteManagedAgentMutation();
+  const stopAgentMutation = useStopManagedAgentMutation();
   const openDmMutation = useOpenDmMutation();
   const sendMessageMutation = useSendMessageMutation(null, identityQuery.data);
   const [isCreating, setIsCreating] = React.useState(false);
@@ -38,6 +44,9 @@ export function useCreateWritingBot() {
               targetChannel: input.targetChannel,
               transport: "http",
             }),
+          stopAgent: (pubkey) => stopAgentMutation.mutateAsync(pubkey),
+          deleteAgent: (pubkey) => deleteAgentMutation.mutateAsync({ pubkey }),
+          deletePersona: (id) => deletePersonaMutation.mutateAsync(id),
         });
       } finally {
         setIsCreating(false);
@@ -46,9 +55,12 @@ export function useCreateWritingBot() {
     [
       createAgentMutation.mutateAsync,
       createPersonaMutation.mutateAsync,
+      deleteAgentMutation.mutateAsync,
+      deletePersonaMutation.mutateAsync,
       openDmMutation.mutateAsync,
       runtimesQuery.data,
       sendMessageMutation.mutateAsync,
+      stopAgentMutation.mutateAsync,
     ],
   );
 

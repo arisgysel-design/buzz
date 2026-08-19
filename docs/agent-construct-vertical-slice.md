@@ -48,6 +48,26 @@ No parallel agent, message, or runtime store was added.
 - Start failure: the DM still opens; header copy + toast tell the person to press **Resume**.
 - First-message send failure: the DM still opens so the person can send again.
 
+### Create compensation (orchestrator, existing writers)
+
+There is no transactional backend create that spans persona + managed agent + DM (three existing authorities). A new combined Tauri command would still not be a real DB transaction and would duplicate those writers, so this slice does **not** add a second store.
+
+**Before:** `createWritingBot` ran `listRuntimes → createPersona → createAgent → openDm → send` with no cleanup. `createAgent` failure left a persona; `openDm` failure left a persona + managed agent, and `spawnAfterCreate` could leave a running OpenClaw process with no conversation. Retry accumulated orphans.
+
+**After:** mid-path failures before a successful DM compensate through the existing writers, then return `create_failed` with the original error (compensation errors are swallowed so they cannot hide it):
+
+| Failure | Cleanup |
+| --- | --- |
+| `createAgent` throws after persona | `deletePersona` |
+| `openDm` throws after persona + agent | `stopManagedAgent` → `deleteManagedAgent` → `deletePersona` |
+| first send throws after DM | none — keep the conversation |
+
+`delete_managed_agent` already stops a local process; the explicit stop still runs first so a spawn cannot survive a failed delete. `delete_persona` cascades linked agents, which covers a `createAgent` throw after the agent record was written but before the orchestrator received the pubkey.
+
+Retry after those failures does not accumulate leftover personas or managed agents.
+
+Stop/Resume/Restart in the DM header match the writing-bot prompt marker (`You are a writing bot.`), not every local OpenClaw 1:1 DM. Builder-created OpenClaw agents keep the profile Start/Stop path.
+
 ## Tests / evidence
 
 Automated (this Linux environment):
@@ -65,7 +85,7 @@ pnpm build:e2e && pnpm exec playwright test --project=smoke \
 
 Results:
 
-- 18 construct / shell-route unit tests passed
+- construct / shell-route unit tests (compensation, construct-bot isolation, name truncation)
 - desktop `tsc --noEmit` passed
 - Playwright smoke spec `agent-construct-writing-bot.spec.ts`: 3 passed (Plus → Stop/Resume/Restart keeps the DM; missing OpenClaw refuses create; Agents page button opens the same screen)
 

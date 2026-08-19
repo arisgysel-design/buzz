@@ -1,4 +1,8 @@
-import type { AcpRuntime, AcpRuntimeCatalogEntry } from "@/shared/api/types";
+import type {
+  AcpRuntime,
+  AcpRuntimeCatalogEntry,
+  ManagedAgent,
+} from "@/shared/api/types";
 import { friendlyAgentLastError } from "@/features/agents/lib/friendlyAgentLastError";
 
 /**
@@ -16,6 +20,8 @@ import { friendlyAgentLastError } from "@/features/agents/lib/friendlyAgentLastE
 
 export const WRITING_BOT_RUNTIME_ID = "openclaw";
 export const WRITING_BOT_FALLBACK_NAME = "Writing bot";
+/** Cheap slice marker. Do not put this in persona envVars — those merge into spawn. */
+export const WRITING_BOT_PROMPT_MARKER = "You are a writing bot.";
 
 export type ConstructFailureCode =
   | "empty_job"
@@ -95,7 +101,9 @@ export function nameWritingBot(job: string): string {
   const words = sentence.split(" ").filter(Boolean).slice(0, 5);
   let name = words.join(" ");
   if (name.length > 32) {
-    name = `${name.slice(0, 32).trim()}`;
+    const clipped = name.slice(0, 32).trimEnd();
+    const lastSpace = clipped.lastIndexOf(" ");
+    name = lastSpace > 0 ? clipped.slice(0, lastSpace) : clipped;
   }
   if (!name) {
     return WRITING_BOT_FALLBACK_NAME;
@@ -106,7 +114,7 @@ export function nameWritingBot(job: string): string {
 export function buildWritingBotSystemPrompt(job: string): string {
   const trimmed = job.trim();
   return [
-    "You are a writing bot. Help the person in this conversation write clearly.",
+    `${WRITING_BOT_PROMPT_MARKER} Help the person in this conversation write clearly.`,
     "",
     "Your job:",
     trimmed,
@@ -114,6 +122,28 @@ export function buildWritingBotSystemPrompt(job: string): string {
     "Draft, edit, and improve writing when asked. Stay in this conversation.",
     "If you cannot complete a request, say so plainly and suggest a next step.",
   ].join("\n");
+}
+
+/**
+ * Agent Construct header controls match this marker, not every local OpenClaw
+ * 1:1 DM. Builder-created OpenClaw agents keep the profile Start/Stop path.
+ */
+export function isConstructWritingBotAgent(
+  agent: Pick<
+    ManagedAgent,
+    "backend" | "agentCommand" | "runtime" | "systemPrompt"
+  >,
+): boolean {
+  if (agent.backend.type !== "local") {
+    return false;
+  }
+  const isOpenClaw =
+    agent.runtime === WRITING_BOT_RUNTIME_ID ||
+    agent.agentCommand === WRITING_BOT_RUNTIME_ID;
+  if (!isOpenClaw) {
+    return false;
+  }
+  return (agent.systemPrompt ?? "").startsWith(WRITING_BOT_PROMPT_MARKER);
 }
 
 export function constructPrimaryActionLabel(

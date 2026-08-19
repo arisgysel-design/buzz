@@ -1,21 +1,49 @@
 import type { Channel, ManagedAgent } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
-import { WRITING_BOT_RUNTIME_ID } from "./writingBot";
+import { isConstructWritingBotAgent } from "./writingBot";
 
 /**
- * The owned local agent in a 1:1 DM, if this conversation is that agent's
- * home. Group DMs and human-only DMs return null.
+ * True for a 1:1 DM with a known self pubkey. Used to skip Agent Construct
+ * queries on streams, group DMs, and unsigned sessions.
+ */
+export function isOneToOneDm(
+  channel: Pick<Channel, "channelType" | "participantPubkeys"> | null,
+  currentPubkey: string | null | undefined,
+): boolean {
+  return peerPubkeyFromDm(channel, currentPubkey) !== null;
+}
+
+/**
+ * The owned Agent Construct writing bot in a 1:1 DM, if this conversation is
+ * that bot's home. Group DMs, human-only DMs, and builder-created OpenClaw
+ * agents return null so those keep the profile Start/Stop path.
  *
- * Conversation authority stays the relay DM. This helper only matches the
- * existing managed-agent record so Stop/Resume/Restart can use start/stop
- * without a second runtime store.
+ * Conversation authority stays the relay DM. Matching uses the existing
+ * managed-agent record plus the writing-bot prompt marker.
  */
 export function ownedLocalAgentFromDm(
   channel: Pick<Channel, "channelType" | "participantPubkeys"> | null,
   agents: readonly ManagedAgent[] | null | undefined,
   currentPubkey: string | null | undefined,
 ): ManagedAgent | null {
+  const agentPubkey = peerPubkeyFromDm(channel, currentPubkey);
+  if (!agentPubkey) {
+    return null;
+  }
+  return (
+    (agents ?? []).find(
+      (agent) =>
+        normalizePubkey(agent.pubkey) === agentPubkey &&
+        isConstructWritingBotAgent(agent),
+    ) ?? null
+  );
+}
+
+function peerPubkeyFromDm(
+  channel: Pick<Channel, "channelType" | "participantPubkeys"> | null,
+  currentPubkey: string | null | undefined,
+): string | null {
   if (channel?.channelType !== "dm") {
     return null;
   }
@@ -26,25 +54,5 @@ export function ownedLocalAgentFromDm(
   const others = channel.participantPubkeys
     .map((pubkey) => normalizePubkey(pubkey))
     .filter((pubkey) => pubkey.length > 0 && pubkey !== self);
-  if (others.length !== 1) {
-    return null;
-  }
-  const agentPubkey = others[0];
-  return (
-    (agents ?? []).find(
-      (agent) =>
-        normalizePubkey(agent.pubkey) === agentPubkey &&
-        agent.backend.type === "local" &&
-        isOpenClawWritingBot(agent),
-    ) ?? null
-  );
-}
-
-function isOpenClawWritingBot(
-  agent: Pick<ManagedAgent, "agentCommand" | "runtime">,
-) {
-  return (
-    agent.runtime === WRITING_BOT_RUNTIME_ID ||
-    agent.agentCommand === WRITING_BOT_RUNTIME_ID
-  );
+  return others.length === 1 ? others[0] : null;
 }

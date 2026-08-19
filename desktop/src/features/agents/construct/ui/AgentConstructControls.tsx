@@ -2,14 +2,16 @@ import * as React from "react";
 import { Play, RefreshCw, Square } from "lucide-react";
 import { toast } from "sonner";
 
-import { ownedLocalAgentFromDm } from "@/features/agents/construct/ownedDmAgent";
+import {
+  isOneToOneDm,
+  ownedLocalAgentFromDm,
+} from "@/features/agents/construct/ownedDmAgent";
 import {
   constructPrimaryActionLabel,
   writingBotStartErrorCopy,
 } from "@/features/agents/construct/writingBot";
 import {
   useManagedAgentsQuery,
-  useRelayAgentsQuery,
   useStartManagedAgentMutation,
   useStopManagedAgentMutation,
 } from "@/features/agents/hooks";
@@ -20,7 +22,6 @@ import {
   stopManagedAgentWithRules,
 } from "@/features/agents/lib/managedAgentControlActions";
 import { clearActiveTurnsForAgentOnStop } from "@/features/agents/managedAgentRuntimeHooks";
-import { useChannelsQuery } from "@/features/channels/hooks";
 import { Button } from "@/shared/ui/button";
 import type { Channel } from "@/shared/api/types";
 
@@ -33,12 +34,13 @@ export function AgentConstructControls({
   channel,
   currentPubkey,
 }: AgentConstructControlsProps) {
-  const isDirectMessage = channel?.channelType === "dm";
+  // Skip the managed-agent query on streams and group DMs. 1:1 human DMs still
+  // need the list to confirm the peer is not a construct writing bot; channels
+  // / relay-agent queries are unused because local stop does not need them.
+  const isCandidateDm = isOneToOneDm(channel, currentPubkey);
   const agentsQuery = useManagedAgentsQuery({
-    enabled: isDirectMessage,
+    enabled: isCandidateDm,
   });
-  const channelsQuery = useChannelsQuery({ enabled: isDirectMessage });
-  const relayAgentsQuery = useRelayAgentsQuery({ enabled: isDirectMessage });
   const startMutation = useStartManagedAgentMutation();
   const stopMutation = useStopManagedAgentMutation();
   const agent = ownedLocalAgentFromDm(channel, agentsQuery.data, currentPubkey);
@@ -58,8 +60,8 @@ export function AgentConstructControls({
       if (isManagedAgentActive(agent)) {
         const result = await stopManagedAgentWithRules({
           agent,
-          channels: channelsQuery.data ?? [],
-          relayAgents: relayAgentsQuery.data ?? [],
+          channels: [],
+          relayAgents: [],
           stopManagedAgent: stopMutation.mutateAsync,
         });
         clearActiveTurnsForAgentOnStop(agent.pubkey);
@@ -79,13 +81,7 @@ export function AgentConstructControls({
       setActionError(copy);
       toast.error(copy);
     }
-  }, [
-    agent,
-    channelsQuery.data,
-    relayAgentsQuery.data,
-    startMutation.mutateAsync,
-    stopMutation.mutateAsync,
-  ]);
+  }, [agent, startMutation.mutateAsync, stopMutation.mutateAsync]);
 
   const handleRestart = React.useCallback(async () => {
     if (!agent) return;

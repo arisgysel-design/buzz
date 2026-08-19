@@ -160,6 +160,9 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
+  // `/agents/new` is the only extra agents path today. startsWith("/agents/")
+  // would also swallow a future `/agents/:id` with its own shell view — do
+  // not invent that route here; split the match if one is added.
   if (pathname === "/agents" || pathname.startsWith("/agents/")) {
     return {
       selectedChannelId: null,

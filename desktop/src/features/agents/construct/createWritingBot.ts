@@ -31,6 +31,12 @@ export type CreateWritingBotDeps = {
     mentionPubkeys: string[];
     targetChannel: Channel;
   }) => Promise<unknown>;
+  /** Existing ACP stop writer — required so a spawned bot cannot outlive a failed DM. */
+  stopAgent: (pubkey: string) => Promise<unknown>;
+  /** Existing managed-agent delete; also stops a still-running local process. */
+  deleteAgent: (pubkey: string) => Promise<unknown>;
+  /** Existing persona delete; cascades any leftover agents linked to the persona. */
+  deletePersona: (id: string) => Promise<unknown>;
 };
 
 export type CreateWritingBotSuccess = {
@@ -50,6 +56,11 @@ export type CreateWritingBotResult =
  * Plus → conversation → OpenClaw writing bot, using existing Buzz writers:
  * persona (config), managed agent (identity + ACP lifecycle), DM + message
  * (conversation). Callers must not persist a parallel agent or message store.
+ *
+ * There is no transactional backend create that spans persona + agent + DM
+ * (three existing authorities). Mid-path failures compensate through those
+ * same writers so retry cannot accumulate orphans or a running process
+ * without a conversation. A failed first send keeps the DM.
  */
 export async function createWritingBot(
   job: string,
@@ -81,74 +92,85 @@ export async function createWritingBot(
   const displayName = nameWritingBot(trimmedJob);
   const systemPrompt = buildWritingBotSystemPrompt(trimmedJob);
 
-  let persona: AgentPersona;
+  let persona: AgentPersona | null = null;
+  let created: CreateManagedAgentResponse | null = null;
+
   try {
     persona = await deps.createPersona({
       displayName,
       systemPrompt,
       runtime: WRITING_BOT_RUNTIME_ID,
     });
-  } catch (error) {
-    return {
-      ok: false,
-      failure: constructFailure(
-        "create_failed",
-        error instanceof Error ? error.message : undefined,
-      ),
-    };
-  }
 
-  let created: CreateManagedAgentResponse;
-  try {
     const agentInput = await buildInstanceInputForDefinition(
       persona,
       runtimeResult.runtime,
     );
     created = await deps.createAgent(agentInput);
-  } catch (error) {
-    return {
-      ok: false,
-      failure: constructFailure(
-        "create_failed",
-        error instanceof Error ? error.message : undefined,
-      ),
-    };
-  }
 
-  let channel: Channel;
-  try {
-    channel = await deps.openDm({ pubkeys: [created.agent.pubkey] });
-  } catch (error) {
-    return {
-      ok: false,
-      failure: constructFailure(
-        "create_failed",
-        error instanceof Error ? error.message : undefined,
-      ),
-    };
-  }
+    const channel = await deps.openDm({ pubkeys: [created.agent.pubkey] });
 
-  let sendError: string | null = null;
-  try {
-    await deps.sendMessage({
-      channelId: channel.id,
-      content: trimmedJob,
-      mentionPubkeys: [created.agent.pubkey],
-      targetChannel: channel,
+    let sendError: string | null = null;
+    try {
+      await deps.sendMessage({
+        channelId: channel.id,
+        content: trimmedJob,
+        mentionPubkeys: [created.agent.pubkey],
+        targetChannel: channel,
+      });
+    } catch (error) {
+      sendError =
+        error instanceof Error
+          ? error.message
+          : "Couldn't send your first message. Try again in this conversation.";
+    }
+
+    return {
+      ok: true,
+      agent: created.agent,
+      channel,
+      spawnError: created.spawnError,
+      profileSyncError: created.profileSyncError,
+      sendError,
+    };
+  } catch (error) {
+    await compensatePartialCreate(deps, {
+      personaId: persona?.id,
+      agentPubkey: created?.agent.pubkey,
     });
-  } catch (error) {
-    sendError =
-      error instanceof Error
-        ? error.message
-        : "Couldn't send your first message. Try again in this conversation.";
+    return {
+      ok: false,
+      failure: constructFailure(
+        "create_failed",
+        error instanceof Error ? error.message : undefined,
+      ),
+    };
   }
+}
 
-  return {
-    ok: true,
-    agent: created.agent,
-    channel,
-    spawnError: created.spawnError,
-    profileSyncError: created.profileSyncError,
-    sendError,
-  };
+async function compensatePartialCreate(
+  deps: Pick<
+    CreateWritingBotDeps,
+    "stopAgent" | "deleteAgent" | "deletePersona"
+  >,
+  leftover: { personaId?: string; agentPubkey?: string },
+): Promise<void> {
+  const { personaId, agentPubkey } = leftover;
+  if (agentPubkey) {
+    // Stop first so a spawnAfterCreate process cannot survive a failed DM
+    // even if the subsequent delete writer errors.
+    await bestEffort(() => deps.stopAgent(agentPubkey));
+    await bestEffort(() => deps.deleteAgent(agentPubkey));
+  }
+  if (personaId) {
+    await bestEffort(() => deps.deletePersona(personaId));
+  }
+}
+
+async function bestEffort(work: () => Promise<unknown>): Promise<void> {
+  try {
+    await work();
+  } catch {
+    // Compensation must not hide the original create failure.
+  }
 }

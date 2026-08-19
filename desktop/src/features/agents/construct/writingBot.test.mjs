@@ -6,10 +6,12 @@ import {
   constructFailure,
   constructFailureCopy,
   constructPrimaryActionLabel,
+  isConstructWritingBotAgent,
   nameWritingBot,
   resolveOpenClawRuntime,
   writingBotStartErrorCopy,
   WRITING_BOT_FALLBACK_NAME,
+  WRITING_BOT_PROMPT_MARKER,
   WRITING_BOT_RUNTIME_ID,
 } from "./writingBot.ts";
 
@@ -54,6 +56,34 @@ test("nameWritingBot capitalizes the first letter", () => {
   assert.equal(
     nameWritingBot("draft customer emails"),
     "Draft customer emails",
+  );
+});
+
+test("nameWritingBot drops an incomplete last word instead of cutting mid-word", () => {
+  assert.equal(
+    nameWritingBot("write wonderful brilliant amazing documentation"),
+    "Write wonderful brilliant",
+  );
+});
+
+test("isConstructWritingBotAgent requires local OpenClaw plus the prompt marker", () => {
+  assert.equal(
+    isConstructWritingBotAgent({
+      backend: { type: "local" },
+      agentCommand: "openclaw",
+      runtime: null,
+      systemPrompt: `${WRITING_BOT_PROMPT_MARKER} Help the person write.`,
+    }),
+    true,
+  );
+  assert.equal(
+    isConstructWritingBotAgent({
+      backend: { type: "local" },
+      agentCommand: "openclaw",
+      runtime: "openclaw",
+      systemPrompt: "You are a helpful coding assistant.",
+    }),
+    false,
   );
 });
 
